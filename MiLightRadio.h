@@ -21,6 +21,7 @@
 class MiLightRadio {
   public:
     MiLightRadio(AbstractPL1167 &pl1167);
+    int setMode(int mode);
     int begin();
     bool available();
     int read(uint8_t frame[], size_t &frame_length);
@@ -34,6 +35,7 @@ class MiLightRadio {
     uint8_t _packet[8], _out_packet[8];
     bool _waiting;
     int _dupes_received;
+    int _mode;
 };
 
 

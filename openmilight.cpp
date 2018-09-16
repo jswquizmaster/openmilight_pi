@@ -51,14 +51,24 @@ void receive()
   } 
 }
 
-void send(uint8_t data[8])
+void send(uint8_t data[8], int mode = 0)
 {
   static uint8_t seq = 1;
 
   uint8_t resends = data[7];
-  if(data[6] == 0x00){
-    data[6] = seq;
-    seq++;
+  if(mode == 0)
+  {
+	if(data[6] == 0x00){
+       data[6] = seq;
+       seq++;
+    }
+  }
+  else
+  {
+       if(data[5] == 0x00){
+       data[5] = seq;
+       seq++;
+    }
   }
 
   if(debug){
@@ -71,6 +81,8 @@ void send(uint8_t data[8])
 
   mlr.write(data, 7);
     
+  mlr.setMode(mode);
+  
   for(int i = 0; i < resends; i++){
     mlr.resend();
   }
@@ -94,19 +106,34 @@ void send(uint64_t v)
 
 void send(uint8_t color, uint8_t bright, uint8_t key,
           uint8_t remote = 0x01, uint8_t remote_prefix = 0x00,
-	  uint8_t prefix = 0xB8, uint8_t seq = 0x00, uint8_t resends = 10)
+	  uint8_t prefix = 0xB8, uint8_t seq = 0x00, uint8_t resends = 10, int mode = 0)
 {
   uint8_t data[8];
-  data[0] = prefix;
-  data[1] = remote_prefix;
-  data[2] = remote;
-  data[3] = color;
-  data[4] = bright;
-  data[5] = key;
-  data[6] = seq;
-  data[7] = resends;
+  
+  if(mode == 0)
+  {
+	data[0] = prefix;
+    data[1] = remote_prefix;
+    data[2] = remote;
+    data[3] = color;
+    data[4] = bright;
+    data[5] = key;
+    data[6] = seq;
+    data[7] = resends;  
+  }
+  else
+  {
+	data[0] = remote_prefix;
+	data[1] = remote;
+	data[3] = color;
+	data[2] = bright;
+	data[4] = key;
+	data[5] = seq;
+	data[6] = 0;
+	data[7] = resends; 
+  }
 
-  send(data);
+  send(data, mode);
 }
 
 double getTime()
@@ -168,6 +195,79 @@ void udp_raw()
       fprintf(stderr, "Message has invalid size %d (expecting 8)!\n", n);
     }
   }
+}
+
+void handle_milight_command_hei(uint16_t remote, char *mesg, int n){
+  static uint8_t first = 1;
+  static uint8_t data[8];
+
+  if(first){
+    data[2] = 0x00;
+    data[3] = 0x00;
+    data[4] = 0x00;
+    data[5] = 0x01;
+    data[7] = 0x09;
+    first = 0;
+  }
+  data[0] = (remote >> 8) & 0xFF;
+  data[1] = remote & 0xFF;
+ 
+  if(n == 2 || n == 3){
+    if(debug){
+      printf("UDP --> Received hex value (%02x, %02x, %02x)\n", mesg[0], mesg[1], mesg[2]);
+    }
+
+    data[6] = 0x00;
+
+    switch(mesg[0]){
+      /* Color */
+      case 0x40:
+        data[4] = 0x0E;
+        data[3] = (0xC8 - mesg[1] + 0x100) & 0xFF;
+        break;
+      /* All Off */
+      case 0x41:
+        data[4] = 0x02;
+        break;
+      /* All On */
+      case 0x42:
+        data[4] = 0x01;
+        break;
+      /* Z1 On */
+      case 0x45:
+        data[2] = 0x22;
+        data[3] = 0x7F;
+        data[4] = 0x06;
+        break;
+     /* Z1 Off */
+     case 0x46:
+        data[2] = 0x22;
+        data[3] = 0x7F;
+        data[4] = 0x07;
+        break;
+     /* Brightness */
+      case 0x4E:
+        data[4] = 0x0F;
+        data[2] = ((0x90 - (mesg[1] * 8) + 0x100) & 0xFF) | (data[4] & 0x07);
+        break; 
+     /* Z1 White */
+     case 0xC5:
+        data[2] = 0x22;
+        data[3] = 0x7F;
+        data[4] = 0x16;
+        break;
+      default:
+        fprintf(stderr, "Unknown command %02x!\n", mesg[0]);
+        return;
+    } /* End case command */
+
+    /* Send command */
+    send(data, 1);
+    data[5]++;
+  }
+  else {
+    fprintf(stderr, "Message has invalid size %d (expecting 2 or 3)!\n", n);
+  } /* End message size check */
 }
 
 void handle_milight_command(uint16_t remote, char *mesg, int n){
@@ -371,11 +471,11 @@ void handle_milight_command(uint16_t remote, char *mesg, int n){
 
 }
 
-void udp_server(uint16_t remote)
+void udp_server(uint16_t remote, uint16_t remote_hei)
 {
   fd_set socks;
-  int discover_fd, milight_fd, raw_fd;
-  struct sockaddr_in discover_addr, milight_addr, raw_addr, cliaddr;
+  int discover_fd, milight_fd, hei_fd, raw_fd;
+  struct sockaddr_in discover_addr, milight_addr, hei_addr, raw_addr, cliaddr;
   char mesg[90];
   char reply[35] = "192.168.180.100,B827EBE5BEBD,";
 
@@ -393,6 +493,13 @@ void udp_server(uint16_t remote)
   milight_addr.sin_port = htons(8899);
   bind(milight_fd, (struct sockaddr *)&milight_addr, sizeof(milight_addr));
 
+  hei_fd = socket(AF_INET, SOCK_DGRAM, 0);
+  bzero(&hei_addr, sizeof(hei_addr));
+  hei_addr.sin_family = AF_INET;
+  hei_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  hei_addr.sin_port = htons(8900);
+  bind(hei_fd, (struct sockaddr *)&hei_addr, sizeof(hei_addr));
+  
   raw_fd = socket(AF_INET, SOCK_DGRAM, 0);
   bzero(&raw_addr, sizeof(raw_addr));
   raw_addr.sin_family = AF_INET;
@@ -430,6 +537,7 @@ void udp_server(uint16_t remote)
     FD_ZERO(&socks);
     FD_SET(discover_fd, &socks);
     FD_SET(milight_fd, &socks);
+    FD_SET(hei_fd, &socks);
     FD_SET(raw_fd, &socks);
 
     if(select(FD_SETSIZE, &socks, NULL, NULL, NULL) >= 0){
@@ -437,12 +545,12 @@ void udp_server(uint16_t remote)
       if(FD_ISSET(discover_fd, &socks)){
         int n = recvfrom(discover_fd, mesg, 90, 0, (struct sockaddr *)&cliaddr, &len);
         mesg[n] = '\0';
-        
+
         if(debug){
           char str[INET_ADDRSTRLEN];
           long ip = cliaddr.sin_addr.s_addr;
           inet_ntop(AF_INET, &ip, str, INET_ADDRSTRLEN);
-          //printf("UDP --> Received discovery request (%s) from %s\n", mesg, str);  
+          //printf("UDP --> Received discovery request (%s) from %s\n", mesg, str);
           printf("From %s: ", str);
           for(size_t i = 0; i < strlen(mesg); i++){
             printf("%x ", mesg[i]);
@@ -454,14 +562,22 @@ void udp_server(uint16_t remote)
           sendto(discover_fd, reply, strlen(reply), 0, (struct sockaddr*)&cliaddr, len);
         }
       }
-      
+
       if(FD_ISSET(milight_fd, &socks)){
         int n = recvfrom(milight_fd, mesg, 41, 0, (struct sockaddr *)&cliaddr, &len);
 
         mesg[n] = '\0';
 
         handle_milight_command(remote, mesg, n);
-      } 
+      }
+
+      if(FD_ISSET(hei_fd, &socks)){
+        int n = recvfrom(hei_fd, mesg, 41, 0, (struct sockaddr *)&cliaddr, &len);
+
+        mesg[n] = '\0';
+
+        handle_milight_command_hei(remote_hei, mesg, n);
+      }
 
       if(FD_ISSET(raw_fd, &socks)){
         int n = recvfrom(raw_fd, mesg, 41, 0, (struct sockaddr *)&cliaddr, &len);
@@ -680,15 +796,15 @@ int main(int argc, char** argv)
     printf("Receiving mode, press Ctrl-C to end\n");
     receive();
   }
- 
+
   if(do_udp){
-    printf("UDP mode (raw), press Ctrl-C to end\n"); 
+    printf("UDP mode (raw), press Ctrl-C to end\n");
     udp_raw();
-  } 
+  }
 
   if(do_milight){
-    printf("UDP mode (milight), press Ctrl-C to end\n"); 
-    udp_server(0xB422);
+    printf("UDP mode (milight), press Ctrl-C to end\n");
+    udp_server(0xB422, 0x75DE);
   }
 
   if(do_bind){
