@@ -1,0 +1,10 @@
+[Unit]
+Description=Simple MiLight Bridge
+
+[Service]
+Type=simple
+ExecStart=/home/pi/openmilight/openmilight_pi/openmilight -m
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
