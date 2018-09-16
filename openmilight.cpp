@@ -377,7 +377,7 @@ void udp_server(uint16_t remote)
   int discover_fd, milight_fd, raw_fd;
   struct sockaddr_in discover_addr, milight_addr, raw_addr, cliaddr;
   char mesg[90];
-  char reply[35] = "192.168.1.14,BABECAFEBABE,";
+  char reply[35] = "192.168.180.100,B827EBE5BEBD,";
 
   discover_fd = socket(AF_INET, SOCK_DGRAM, 0);
   bzero(&discover_addr, sizeof(discover_addr));
@@ -688,7 +688,7 @@ int main(int argc, char** argv)
 
   if(do_milight){
     printf("UDP mode (milight), press Ctrl-C to end\n"); 
-    udp_server(0x0044);
+    udp_server(0xB422);
   }
 
   if(do_bind){
