@@ -1,7 +1,7 @@
 
 CC = g++
-CFLAGS = -c -Wall
-LIBS = -lrf24-bcm
+CFLAGS = -c -Wall -I.
+LIBS = -LRF24/bin/x86_64 -lrf24
 SOURCES =  PL1167_nRF24.cpp MiLightRadio.cpp openmilight.cpp
 BIN = openmilight
 

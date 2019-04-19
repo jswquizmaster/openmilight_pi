@@ -10,8 +10,8 @@
 #endif
 
 #include "AbstractPL1167.h"
-// #include "RF24.h"
-#include <RF24/RF24.h>
+#include "RF24/RF24.h"
+// #include <RF24/RF24.h>
 
 #ifndef PL1167_NRF24_H_
 #define PL1167_NRF24_H_

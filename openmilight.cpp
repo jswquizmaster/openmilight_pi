@@ -19,7 +19,8 @@ using namespace std;
 #include "PL1167_nRF24.h"
 #include "MiLightRadio.h"
 
-RF24 radio(RPI_V2_GPIO_P1_22, RPI_V2_GPIO_P1_24, BCM2835_SPI_SPEED_1MHZ);
+//RF24 radio(RPI_V2_GPIO_P1_22, RPI_V2_GPIO_P1_24, BCM2835_SPI_SPEED_1MHZ);
+RF24 radio(402, 10);
 
 PL1167_nRF24 prf(radio);
 MiLightRadio mlr(prf);
